@@ -66,7 +66,7 @@ def MKL_SVM_Evaluation(trained_SVM_model, y_test, raw_predicted_Y, primal_obj=No
     if save_path is None and save:
         print("Warning: save_path is None. Metrics will not be saved.")
     if save and save_path is not None:
-        path = os.path.join(save_path, "from_scratch_metrics.txt")
+        path = os.path.join(save_path, "mkl-svm.txt")
         with open(path, "w") as f:
             f.write("--- Model Info ---\n")
             for key, value in metrics.items():
@@ -127,7 +127,7 @@ def evaluate_sklearn_mkl(trained_SVM_model, x_train, y_train, x_test, y_test, be
     if save_path is None and save:
         print("Warning: save_path is None. Metrics will not be saved.")
     if save and save_path is not None:
-        path = os.path.join(save_path, "sk_learn_metrics.txt")
+        path = os.path.join(save_path, "sk-learn-svc.txt")
         with open(path, "w") as f:
             f.write("--- Model Info ---\n")
             for key, value in metrics.items():
