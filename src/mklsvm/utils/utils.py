@@ -1,7 +1,8 @@
 import numpy as np
 import datetime as dt
 
-def Train_Test_Split(X, Y, test_size=0.2, shuffle=True, random_state=None):
+
+def train_test_split(X, Y, test_size=0.2, shuffle=True, random_state=None):
     X = np.asarray(X)
     Y = (np.asarray(Y)).ravel()
     # --- Checking for same length ---
@@ -26,7 +27,8 @@ def Train_Test_Split(X, Y, test_size=0.2, shuffle=True, random_state=None):
     return x_train, x_test, y_train, y_test
 
 
-class Timer:
+
+class timer:
     def __init__(self):
         self.start_time = None
         self.end_time = None

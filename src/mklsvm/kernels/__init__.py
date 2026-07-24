@@ -1,6 +1,5 @@
-from svm import SVM
-from utils import Train_Test_Split
+from .kernels import * 
 
 #> ---------------------------------------------------------------------------------------
-__all__ = ["SVM", "Train_Test_Split"]
+__all__ = ["Kernels", "LinearKernel", "PolynomialKernel", "RBFKernel", "SigmoidKernel"]
 #> ---------------------------------------------------------------------------------------

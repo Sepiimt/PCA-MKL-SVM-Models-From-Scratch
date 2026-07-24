@@ -1,10 +1,11 @@
 import numpy as np
 import os
-from mkl import MKL
+from ..mkl import MKL
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-def MKL_SVM_Evaluation(trained_SVM_model, y_test, raw_predicted_Y, primal_obj=None, dual_obj=None, save=False, save_path=None):
+
+def mkl_svm_evaluation(trained_SVM_model, x_train, y_train, y_test, raw_predicted_Y, primal_obj=None, dual_obj=None, save=False, save_path=None):
     """    
     Evaluates a trained Multiple Kernel Learning SVM model.
     
@@ -17,12 +18,15 @@ def MKL_SVM_Evaluation(trained_SVM_model, y_test, raw_predicted_Y, primal_obj=No
     """
     metrics = {}
     # --- Acquiring Necessary Values from the Trained Model ---
-    y_train = trained_SVM_model.MKL_instance.train_Y
-    # Explicitly cast to 3D NumPy array for predictable tensor operations
-    X_kernels = np.array([kernel.K for kernel in trained_SVM_model.MKL_instance.kernel_array])
-    beta = trained_SVM_model.MKL_instance.beta_array
-    b = trained_SVM_model.MKL_instance.SMO_model.b
-    alpha = trained_SVM_model.MKL_instance.SMO_model.alpha_vector
+    beta_array = trained_SVM_model.MKL_instance.beta_array
+    # --- Computing Kernel Sum For Training Data (Shape: N_train x N_train) ---
+    untrained_train_MKL = MKL()
+    untrained_train_MKL.select_kernels(trained_SVM_model.MKL_instance.selected_kernels, 
+                                       trained_SVM_model.MKL_instance.kernel_centering,
+                                       trained_SVM_model.MKL_instance.kernel_normalization)
+    untrained_train_MKL.kernels_arguments = trained_SVM_model.kernels_arguments
+    untrained_train_MKL.kernels_instances_matrix_fit(x_train, untrained_train_MKL.kernels_instances_matrix, untrained_train_MKL.kernels_arguments)
+    sum_of_x_train_kernel_matrices = untrained_train_MKL.create_sum_of_kernels_instances_matrix(beta_array, untrained_train_MKL.kernels_instances_matrix, len(x_train))
     # --- Classification Metrics ---
     y_pred = np.sign(raw_predicted_Y)
     y_pred[y_pred == 0] = 1  # Handle boundary edge case
@@ -38,26 +42,22 @@ def MKL_SVM_Evaluation(trained_SVM_model, y_test, raw_predicted_Y, primal_obj=No
     else:
         metrics['f1_score'] = 0.0
     # --- Structural & MKL-Specific Metrics ---
-    # Combine kernels using the optimized beta weights: shape (N_train, N_train)
-    K_combined = np.zeros((X_kernels.shape[1], X_kernels.shape[2]))
-    for loop_beta, loop_kernel in zip(beta, X_kernels):
-        K_combined += loop_beta * loop_kernel
     # Target Matrix YY^T
     YY_target = np.outer(y_train, y_train)
     # Kernel Target Alignment (Frobenius inner product)
-    num = np.sum(K_combined * YY_target)
-    denom = np.sqrt(np.sum(K_combined * K_combined) * np.sum(YY_target * YY_target))
+    num = np.sum(sum_of_x_train_kernel_matrices * YY_target)
+    denom = np.sqrt(np.sum(sum_of_x_train_kernel_matrices * sum_of_x_train_kernel_matrices) * np.sum(YY_target * YY_target))
     metrics['kernel_target_alignment'] = num / denom if denom > 0 else 0.0
     # Sparsity and Entropy of Weights
-    metrics['active_kernels'] = np.sum(beta > 1e-5)
+    metrics['active_kernels'] = np.sum(beta_array > 1e-5)
     # Normalize entropy (with safety check for single-kernel baselines)
-    if np.sum(beta) > 0 and len(beta) > 1:
-        beta_norm = beta / np.sum(beta)
-        metrics['weight_entropy'] = -np.sum(beta_norm * np.log(beta_norm + 1e-12)) / np.log(len(beta))
+    if np.sum(beta_array) > 0 and len(beta_array) > 1:
+        beta_norm = beta_array / np.sum(beta_array)
+        metrics['weight_entropy'] = -np.sum(beta_norm * np.log(beta_norm + 1e-12)) / np.log(len(beta_array))
     else:
         metrics['weight_entropy'] = 0.0
     # --- Optimization Sanity Checks ---
-    metrics['support_vector_count'] = np.sum(alpha > 1e-5)
+    metrics['support_vector_count'] = len(trained_SVM_model.MKL_instance.SMO_model.sv_indices)
     if primal_obj is not None and dual_obj is not None:
         metrics['duality_gap'] = abs(primal_obj - dual_obj)
     else:
@@ -76,10 +76,10 @@ def MKL_SVM_Evaluation(trained_SVM_model, y_test, raw_predicted_Y, primal_obj=No
     return metrics
 
 
-def evaluate_sklearn_mkl(trained_SVM_model, x_train, y_train, x_test, y_test, beta=None, save=False, save_path=None):
+def sklearn_semi_mkl_evaluation(trained_SVM_model, x_train, y_train, x_test, y_test, beta=None, save=False, save_path=None):
     """
     Trains an sklearn Precomputed SVC on a multi-kernel matrix structure.
-    If beta=None, it uses a uniform baseline [0.25, 0.25, 0.25, 0.25].
+    If beta=None, it uses a uniform baseline [0.20, 0.20, 0.20, 0.20, 0.20, 0].
     """
     # --- Default Beta Handling ---
     if beta is None:
@@ -87,25 +87,26 @@ def evaluate_sklearn_mkl(trained_SVM_model, x_train, y_train, x_test, y_test, be
         beta = np.ones(num_kernels) / num_kernels  # Uniform baseline
     # --- Computing Kernel Sum For Training Data (Shape: N_train x N_train) ---
     untrained_train_MKL = MKL()
-    untrained_train_MKL.select_kernels(trained_SVM_model.MKL_instance.selected_kernels)
+    untrained_train_MKL.select_kernels(trained_SVM_model.MKL_instance.selected_kernels, 
+                                           trained_SVM_model.MKL_instance.kernel_centering,
+                                           trained_SVM_model.MKL_instance.kernel_normalization)
     untrained_train_MKL.kernels_arguments = trained_SVM_model.kernels_arguments
-    untrained_train_MKL.sub_fit_kernels_matrices_fit(x_train, untrained_train_MKL.kernel_array, untrained_train_MKL.kernels_arguments)
-    sum_of_x_train_kernel_matrices = untrained_train_MKL.sub_fit_create_sum_of_kernel_matrices(beta, untrained_train_MKL.kernel_array, len(x_train))
+    untrained_train_MKL.kernels_instances_matrix_fit(x_train, untrained_train_MKL.kernels_instances_matrix, untrained_train_MKL.kernels_arguments)
+    sum_of_x_train_kernel_matrices = untrained_train_MKL.create_sum_of_kernels_instances_matrix(beta, untrained_train_MKL.kernels_instances_matrix, len(x_train))
     # --- Computing Kernel Cross Matrix For Testing Data (Shape: N_train x N_test) ---
-    sum_of_x_test_kernel_matrices = np.zeros((len(x_train), len(x_test)))
-    args_generator = untrained_train_MKL.sub_kernels_matrices_fit_value_yielder(untrained_train_MKL.kernels_arguments)
+    sum_of_x_test_kernel_matrices = np.zeros((len(x_test), len(x_train)))
+    args_generator = untrained_train_MKL.kernels_value_yielder(untrained_train_MKL.kernels_arguments)
     # --- Cross Kernel Computation Loop ---
-    for loop_beta, kernel, argument in zip(beta, untrained_train_MKL.kernel_array, args_generator):
-        # compute_cross_K returns shape (n_samples_train, n_samples_test)
+    for loop_beta, kernel, argument in zip(beta, untrained_train_MKL.kernels_instances_matrix, args_generator):
+        # compute_cross_K returns shape (n_samples_test, n_samples_train)
+        #> scikit-learn precomputed kernel expects shape (n_samples_test, n_samples_train)
         K_cross = kernel.compute_cross_K(x_train, x_test, argument)
         sum_of_x_test_kernel_matrices += loop_beta * K_cross
-    #> scikit-learn precomputed kernel expects shape (n_samples_test, n_samples_train)
-    sum_of_x_test_kernel_matrices_sklearn = sum_of_x_test_kernel_matrices.T
     # --- Fitting Precomputed Solver ---
     clf = SVC(kernel='precomputed', C=1.0, random_state=42)
     clf.fit(sum_of_x_train_kernel_matrices, y_train)
     # --- Generating Predictions and Process Edge Boundary ---
-    raw_predicted_Y = clf.decision_function(sum_of_x_test_kernel_matrices_sklearn)
+    raw_predicted_Y = clf.decision_function(sum_of_x_test_kernel_matrices)
     y_pred = np.sign(raw_predicted_Y)
     y_pred[y_pred == 0] = 1
     # --- Computing Pipeline Evaluation Metrics ---
