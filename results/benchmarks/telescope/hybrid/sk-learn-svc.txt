@@ -1,9 +1,0 @@
---- Model Info ---
-> accuracy: 0.81375
-> precision: 0.8022690437601296
-> recall: 0.9482758620689655
-> f1_score: 0.8691834942932397
-> kernel_target_alignment: 0.14597527910283986
-> active_kernels: 1
-> weight_entropy: -6.213901715968123e-13
-> support_vector_count: 1553
