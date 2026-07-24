@@ -1,0 +1,10 @@
+--- Model Info ---
+> accuracy: 0.9734513274336283
+> precision: 0.9615384615384616
+> recall: 1.0
+> f1_score: 0.9803921568627451
+> kernel_target_alignment: 0.6232333897913857
+> active_kernels: 5
+> weight_entropy: 0.7833694303114026
+> support_vector_count: 77
+> duality_gap: None
